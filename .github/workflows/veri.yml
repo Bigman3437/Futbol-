@@ -1,0 +1,46 @@
+name: Veri guncelle
+
+on:
+  schedule:
+    - cron: '0 5,17 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  guncelle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: CSV dosyalarini indir
+        run: |
+          mkdir -p veri
+          Y=$(date +%Y); M=$(date +%m | sed 's/^0//')
+          if [ "$M" -ge 7 ]; then START=$Y; else START=$((Y-1)); fi
+          al() { curl -fsSL --retry 2 -A "Mozilla/5.0" --max-time 60 "$1" -o /tmp/x.csv && head -c 3000 /tmp/x.csv | grep -q HomeTeam; }
+          for i in $(seq 0 9); do
+            S=$((START-i))
+            CODE=$(printf "%02d%02d" $((S%100)) $(((S+1)%100)))
+            for LIG in T1 E0 SP1 I1 D1 F1; do
+              if al "https://www.football-data.co.uk/mmz4281/$CODE/$LIG.csv" || al "http://www.football-data.co.uk/mmz4281/$CODE/$LIG.csv"; then
+                cp /tmp/x.csv "veri/${LIG}_${CODE}.csv"
+              else
+                echo "indirilemedi: $LIG $CODE"
+              fi
+            done
+          done
+          if al "https://www.football-data.co.uk/fixtures.csv" || al "http://www.football-data.co.uk/fixtures.csv"; then
+            cp /tmp/x.csv veri/fixtures.csv
+          else
+            echo "fixtures indirilemedi"
+          fi
+
+      - name: Degisiklikleri kaydet
+        run: |
+          git config user.name "veri-bot"
+          git config user.email "veri-bot@users.noreply.github.com"
+          git add veri
+          git diff --cached --quiet || git commit -m "Veri guncellendi"
+          git push
